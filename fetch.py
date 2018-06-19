@@ -1,6 +1,7 @@
 import urllib.request as REQ
 import xml.dom.minidom as MDOM
 import datetime as DT
+import sqlite3
 
 def fetch(url):
     response = REQ.urlopen(url)
@@ -30,8 +31,7 @@ def parseFeed(dom, itemT, guidT, titleT, linkT, linkA, dateT, dateL, dateF):
         else:
             link = tagValue(item, linkT)
         pubDate = tagValue(item, dateT)
-        pubDate = dateL(pubDate)
-        date = DT.datetime.strptime(pubDate, dateF)
+        date = DT.datetime.strptime(dateL(pubDate), dateF)
         items.append((guid, date, title, link))
     return items
 
@@ -56,5 +56,60 @@ def feed(url):
     else:
         raise Exception('Unknown feed type', root)
 
-print(feed('https://www.bleepingcomputer.com/feed/'))
-print(feed('https://www.theverge.com/rss/front-page/index.xml'))
+def check(feeds):
+    connection = sqlite3.connect('feeds.db')
+    cursor = connection.cursor()
+    cursor.execute('''create table if not exists articles (
+id integer primary key,
+guid text unique not null,
+published date,
+title text,
+link text,
+article text,
+read integer,
+feed integer not null,
+foreign key(feed) references feeds(id)
+)''')
+    print('feeds',len(feeds))
+    for f in feeds:
+        print('checking',f[1]);
+        for a in feed(f[2]):
+            exists = cursor.execute('''select 1 from articles
+where guid = ?''', [a[0]]).fetchone()
+            print('inserting?', not exists, a[2])
+            if not exists:
+                a = a + (f[0], 0)
+                cursor.execute('''insert into articles
+(guid, published, title, link, read, feed) values (?, ?, ?, ?, ?, ?)''', a)
+    connection.commit()
+    connection.close()
+
+def insertTestFeeds(cursor):
+    f = [
+        ('BleepingComputer','https://www.bleepingcomputer.com/feed/'),
+        ('The Verge','https://www.theverge.com/rss/front-page/index.xml')
+        ]
+    cursor.executemany('insert into feeds (name, link) values (?, ?)', f)
+
+def checkDb():
+    connection = sqlite3.connect('feeds.db')
+    cursor = connection.cursor()
+    for r in cursor.execute('select * from articles'):
+        print(r)
+
+def listFeeds():
+    connection = sqlite3.connect('feeds.db')
+    cursor = connection.cursor()
+    cursor.execute('''create table if not exists feeds (
+id integer primary key,
+name text,
+link text
+)''')
+    insertTestFeeds(cursor)
+    feeds = cursor.execute('select * from feeds').fetchall()
+    connection.commit()
+    connection.close()
+    return feeds
+
+check(listFeeds())
+checkDb()
