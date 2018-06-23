@@ -53,6 +53,16 @@ def do_close_html(function):
         function(self)
     return wrapper
 
+def do_update(self,m):
+    import time
+    response(self,'updating1<br/>')
+    time.sleep(1)
+    response(self,'updating2<br/>')
+    time.sleep(1)
+    response(self,'updating3<br/>')
+    time.sleep(1)
+    response(self,'update done <a href="/">goto /</a></p>')
+
 class FeedRequestHandler(BaseHTTPRequestHandler):
     @do_respond_200_html
     @do_open_html
@@ -62,6 +72,7 @@ class FeedRequestHandler(BaseHTTPRequestHandler):
         'listing articles of #{}'.format(m.group(1))))
     @do_handle('^/a/(\d+)/?$',lambda self, m: response(self,
         'article #{}'.format(m.group(1))))
+    @do_handle('^/update/?$',do_update)
     @do_close_html
     def do_GET(self):
         response(self,_404)
