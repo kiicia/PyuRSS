@@ -81,6 +81,7 @@ where guid = ?''', [a[0]]).fetchone()
                 a = a + (f[0], 0)
                 cursor.execute('''insert into articles
 (guid, published, title, link, read, feed) values (?, ?, ?, ?, ?, ?)''', a)
+        cursor.execute('''update feeds set lastChecked = ? where id = ?''', [DT.datetime.now(), f[0]])
     connection.commit()
     connection.close()
 
@@ -94,6 +95,8 @@ def insertTestFeeds(cursor):
 def checkDb():
     connection = sqlite3.connect('feeds.db')
     cursor = connection.cursor()
+    for f in cursor.execute('select * from feeds'):
+        print(f)
     for r in cursor.execute('select * from articles'):
         print(r)
 
@@ -103,9 +106,10 @@ def listFeeds():
     cursor.execute('''create table if not exists feeds (
 id integer primary key,
 name text,
-link text
+link text unique not null,
+lastChecked date
 )''')
-    insertTestFeeds(cursor)
+    #insertTestFeeds(cursor)
     feeds = cursor.execute('select * from feeds').fetchall()
     connection.commit()
     connection.close()
