@@ -60,8 +60,9 @@ def do_create_html(function):
 
 def do_update(self,m):
     feeds = RSS.listFeeds()
-    for feed in feeds:
-        response(self,'updating {}...<br/>'.format(feed[1]))
+    l = len(feeds)
+    for i,feed in enumerate(feeds):
+        response(self,'updating ({}/{}) {}...<br/>'.format(i+1,l,feed[1]))
         RSS.check([feed])
     response(self,'update done <a href="/">goto /</a>')
 
@@ -99,7 +100,7 @@ def show_article(self,m):
     article = RSS.getArticle(m.group(1))
     feed = RSS.getFeed(article[7])
     response(self,parts[0].format(article[3],feed[1],article[2]))
-    response(self,article[6] if article[6] else '')
+    response(self,article[5] if article[5] else '')
     response(self,parts[1])
 
 class FeedRequestHandler(BaseHTTPRequestHandler):

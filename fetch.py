@@ -2,6 +2,10 @@ import urllib.request as REQ
 import xml.dom.minidom as MDOM
 import datetime as DT
 import sqlite3
+import json
+
+# ('Bleeping Computer','https://www.bleepingcomputer.com/feed/')
+# ('The Verge','https://www.theverge.com/rss/front-page/index.xml')
 
 sql_create_articles = '''
 create table if not exists articles (
@@ -18,7 +22,7 @@ foreign key(feed) references feeds(id)
 '''
 
 sql_insert_article = '''
-insert into articles (guid, published, title, link, read, feed) values (?, ?, ?, ?, ?, ?)
+insert into articles (guid, published, title, link, article, read, feed) values (?, ?, ?, ?, ?, ?, ?)
 '''
 
 sql_exists_article = '''
@@ -60,6 +64,12 @@ select * from feeds where id = ?
 
 db_name = 'feeds.db'
 
+def mercury_key():
+    f = open('mercury.key','r')
+    key = f.read()
+    f.close()
+    return key
+
 def db_access(function):
     def wrapper(*args, **kwargs):
         connection = sqlite3.connect(db_name)
@@ -71,13 +81,20 @@ def db_access(function):
         return returned
     return wrapper
 
-def fetch(url):
-    response = REQ.urlopen(url)
+def fetch(url,headers={}):
+    request = REQ.Request(url,headers=headers)
+    response = REQ.urlopen(request)
     status = response.getcode()
     if status == 200:
         return response.read().decode('UTF-8')
     else:
         raise Exception(status, url)
+
+def fetch_article_text(url):
+    mercury_url = 'https://mercury.postlight.com/parser?url={}'.format(url)
+    raw_data = fetch(mercury_url,{'Content-Type':'application/json', 'x-api-key':mercury_key()})
+    json_data = json.loads(raw_data)
+    return json_data['content']
 
 def tagValue(node, name):
     found = node.getElementsByTagName(name)
@@ -134,25 +151,18 @@ def check(feeds, cursor=None):
             exists = cursor.execute(sql_exists_article, [a[0]]).fetchone()
             print('inserting?', not exists, a[2])
             if not exists:
-                a = a + (0, f[0])
+                a = a + (fetch_article_text(a[3]), 0, f[0])
                 cursor.execute(sql_insert_article, a)
         cursor.execute(sql_update_feed_checked, [DT.datetime.now(), f[0]])
-
-def insertTestFeeds(cursor):
-    f = [
-        ('BleepingComputer','https://www.bleepingcomputer.com/feed/'),
-        ('The Verge','https://www.theverge.com/rss/front-page/index.xml')
-        ]
-    cursor.executemany(sql_insert_feed, f)
 
 @db_access
 def checkDb(cursor):
     #for f in cursor.execute('select * from feeds'):
         #print(f)
-    #for r in cursor.execute('select * from articles'):
-        #print(r)
-    for x in cursor.execute(sql_list_articles,(1,)):
-        print(x)
+    for r in cursor.execute('select * from articles'):
+        print(r)
+    #for x in cursor.execute(sql_list_articles,(1,)):
+        #print(x)
 
 @db_access
 def listFeeds(cursor=None):
@@ -180,4 +190,4 @@ def add_feed(name, url, cursor=None):
     cursor.execute(sql_insert_feed, (name, url))
 
 #check(listFeeds())
-#checkDb()
+checkDb()
