@@ -1,25 +1,34 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import re
+from urllib.parse import unquote
+import fetch as RSS
 
-_404 = '''<p>404 :(<br/><a href="/">goto /</a></p>'''
+#import hashlib
+#hashlib.sha256('password'.encode('utf-8')).hexdigest()
 
-head = '''<html>
-<head>
-<title>PyuRSS</title>
-<style>
-a {
-    color: black;
-    text-decoration: underline;
-}
-</style>
-</head>
-<body>'''
-
-tail = '''</body>
-</html>'''
+def load_html(name):
+    file = open(name,'r')
+    html = file.read()
+    file.close()
+    return html
 
 def response(self,text):
     self.wfile.write(text.encode('utf-8'))
+
+def decodeuri(text):
+    return unquote(text.replace('+',' '))
+
+def form_data(data):
+    d = {}
+    for f in data.split('&'):
+        ff = f.split('=')
+        d[decodeuri(ff[0])] = decodeuri(ff[1])
+    return d
+
+def read_form(self):
+    length = self.headers['content-length']
+    data = self.rfile.read(int(length)).decode()
+    return form_data(data)
 
 def do_handle(pattern,action):
     def decorator(function):
@@ -41,45 +50,81 @@ def do_respond_200_html(function):
         function(self)
     return wrapper
 
-def do_open_html(function):
+def do_create_html(function):
     def wrapper(self):
-        response(self,head)
+        parts = load_html('body.html').split('{}')
+        response(self,parts[0])
         function(self)
-    return wrapper
-
-def do_close_html(function):
-    def wrapper(self):
-        response(self,tail)
-        function(self)
+        response(self,parts[1])
     return wrapper
 
 def do_update(self,m):
-    import time
-    response(self,'updating1<br/>')
-    time.sleep(1)
-    response(self,'updating2<br/>')
-    time.sleep(1)
-    response(self,'updating3<br/>')
-    time.sleep(1)
-    response(self,'update done <a href="/">goto /</a></p>')
+    feeds = RSS.listFeeds()
+    for feed in feeds:
+        response(self,'updating {}...<br/>'.format(feed[1]))
+        RSS.check([feed])
+    response(self,'update done <a href="/">goto /</a>')
+
+def add_feed_form(self,m):
+    response(self,load_html('add_form.html'))
+
+def add_feed_action(self,m):
+    form = read_form(self)
+    print('adding {}'.format(form))
+    RSS.add_feed(form['name'], form['url'])
+    response(self,'<p>added: {}<br><a href="/">goto /</a></p>'.format(form))
+
+def list_feeds(self,m):
+    parts = load_html('main.html').split('{}')
+    response(self,parts[0])
+    feeds = RSS.listFeeds()
+    for feed in feeds:
+        url, name = '/f/{}'.format(feed[0]), feed[1]
+        response(self,'<a href="{}">{}</a><br/>'.format(url,name))
+    response(self,parts[1])
+
+def list_articles(self,m):
+    parts = load_html('feed.html').split('{}')
+    feed = RSS.getFeed(m.group(1))
+    print('listing articles for',feed)
+    articles = RSS.listArticles(feed[0])
+    response(self,parts[0].format(feed[1]))
+    for article in articles:
+        url, name = '/a/{}'.format(article[0]), article[1]
+        response(self,'<a href="{}">{}</a><br/>'.format(url,name))
+    response(self,parts[1])
+
+def show_article(self,m):
+    parts = load_html('article.html').split('{}')
+    article = RSS.getArticle(m.group(1))
+    feed = RSS.getFeed(article[7])
+    response(self,parts[0].format(article[3],feed[1],article[2]))
+    response(self,article[6] if article[6] else '')
+    response(self,parts[1])
 
 class FeedRequestHandler(BaseHTTPRequestHandler):
+    
     @do_respond_200_html
-    @do_open_html
-    @do_handle('^/?$',lambda self, m: response(self,'listing feeds'))
-    @do_handle('^/add/?$',lambda self, m: response(self,'adding feed'))
-    @do_handle('^/f/(\d+)/?$',lambda self, m: response(self,
-        'listing articles of #{}'.format(m.group(1))))
-    @do_handle('^/a/(\d+)/?$',lambda self, m: response(self,
-        'article #{}'.format(m.group(1))))
+    @do_create_html
+    @do_handle('^/?$',list_feeds)
+    @do_handle('^/add/?$',add_feed_form)
+    @do_handle('^/f/(\d+)/?$',list_articles)
+    @do_handle('^/a/(\d+)/?$',show_article)
     @do_handle('^/update/?$',do_update)
-    @do_close_html
     def do_GET(self):
-        response(self,_404)
+        response(self,load_html('404.html'))
+
+    @do_respond_200_html
+    @do_create_html
+    @do_handle('^/add/?$',add_feed_action)
+    def do_POST(self):
+        response(self,load_html('404.html'))
 
 def run_server(server_class=HTTPServer, handler_class=BaseHTTPRequestHandler):
     server_address = ('', 8000)
     httpd = server_class(server_address, handler_class)
+    print('rss server started')
     httpd.serve_forever()
+    print('rss server halted')
 
 run_server(handler_class=FeedRequestHandler)
