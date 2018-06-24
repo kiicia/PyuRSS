@@ -1,8 +1,10 @@
 import urllib.request as REQ
+from urllib.error import HTTPError
 import xml.dom.minidom as MDOM
 import datetime as DT
 import sqlite3
 import json
+from urllib.parse import quote
 
 # ('Bleeping Computer','https://www.bleepingcomputer.com/feed/')
 # ('The Verge','https://www.theverge.com/rss/front-page/index.xml')
@@ -91,7 +93,8 @@ def fetch(url,headers={}):
         raise Exception(status, url)
 
 def fetch_article_text(url):
-    mercury_url = 'https://mercury.postlight.com/parser?url={}'.format(url)
+    mercury_url = 'https://mercury.postlight.com/parser?url={}'.format(quote(url))
+    print('fetching',mercury_url)
     raw_data = fetch(mercury_url,{'Content-Type':'application/json', 'x-api-key':mercury_key()})
     json_data = json.loads(raw_data)
     return json_data['content']
@@ -151,18 +154,14 @@ def check(feeds, cursor=None):
             exists = cursor.execute(sql_exists_article, [a[0]]).fetchone()
             print('inserting?', not exists, a[2])
             if not exists:
-                a = a + (fetch_article_text(a[3]), 0, f[0])
+                try:
+                    text = fetch_article_text(a[3])
+                except HTTPError:
+                    print('error :(')
+                    text = ''
+                a = a + (text, 0, f[0])
                 cursor.execute(sql_insert_article, a)
         cursor.execute(sql_update_feed_checked, [DT.datetime.now(), f[0]])
-
-@db_access
-def checkDb(cursor):
-    #for f in cursor.execute('select * from feeds'):
-        #print(f)
-    for r in cursor.execute('select * from articles'):
-        print(r)
-    #for x in cursor.execute(sql_list_articles,(1,)):
-        #print(x)
 
 @db_access
 def listFeeds(cursor=None):
@@ -189,5 +188,3 @@ def add_feed(name, url, cursor=None):
     cursor.execute(sql_create_feeds)
     cursor.execute(sql_insert_feed, (name, url))
 
-#check(listFeeds())
-checkDb()
